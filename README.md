@@ -6,5 +6,5 @@ Primary source: https://github.com/SammyB428/ExifRename
 ExifRename.exe "InputDirectory" "OutputDirectory".
 
 Symbolic links to the source files are created in the output directory. Output catalog format:
-2020 / 2020-09-September / 2020-09-11 / 2020-09-11-03-29-16-7907661.JPG
+2020 / 2020-11-September / 2020-09-11 / 2020-09-11-03-29-16-7907661.JPG
 
