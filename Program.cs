@@ -59,15 +59,114 @@ namespace ExifRename
         public const int OneMegabyte = 1048576;
         public const int BufferSize = 20 * OneMegabyte;
 
-        static void ProcessFile( string this_file_to_process, int file_number, string output_directory )
+        // Traversing a directory tree
+        public static void TraverseTree(string input_directory, string output_directory)
+        {
+            // Data structure to hold names of subfolders to be
+            // examined for files.
+            Stack<string> dirs = new Stack<string>(20);
+
+            if (!System.IO.Directory.Exists(input_directory))
+            {
+                throw new ArgumentException();
+            }
+            dirs.Push(input_directory);
+
+            while (dirs.Count > 0)
+            {
+                string currentDir = dirs.Pop();
+                string[] subDirs;
+                try
+                {
+                    subDirs = System.IO.Directory.GetDirectories(currentDir);
+                }
+                // An UnauthorizedAccessException exception will be thrown if we do not have
+                // discovery permission on a folder or file. It may or may not be acceptable
+                // to ignore the exception and continue enumerating the remaining files and
+                // folders. It is also possible (but unlikely) that a DirectoryNotFound exception
+                // will be raised. This will happen if currentDir has been deleted by
+                // another application or thread after our call to Directory.Exists. The
+                // choice of which exceptions to catch depends entirely on the specific task
+                // you are intending to perform and also on how much you know with certainty
+                // about the systems on which this code will run.
+                catch (UnauthorizedAccessException e)
+                {
+                    Console.WriteLine(e.Message);
+                    continue;
+                }
+                catch (System.IO.DirectoryNotFoundException e)
+                {
+                    Console.WriteLine(e.Message);
+                    continue;
+                }
+                catch (System.IO.PathTooLongException e)
+                {
+                    Console.WriteLine(e.Message);
+                    continue;
+                }
+
+                string[] files = null;
+                try
+                {
+                    files = System.IO.Directory.GetFiles(currentDir);
+                }
+
+                catch (UnauthorizedAccessException e)
+                {
+
+                    Console.WriteLine(e.Message);
+                    continue;
+                }
+
+                catch (System.IO.PathTooLongException e)
+                {
+                    Console.WriteLine(e.Message);
+                    continue;
+                }
+
+                catch (System.IO.DirectoryNotFoundException e)
+                {
+                    Console.WriteLine(e.Message);
+                    continue;
+                }
+                foreach (string file in files)
+                {
+                    try
+                    {
+                        ProcessFile(file, output_directory);
+
+                    }
+                    catch (System.IO.FileNotFoundException e)
+                    {
+                        Console.WriteLine(e.Message);
+                        continue;
+                    }
+                }
+
+                // Push the subdirectories onto the stack for traversal.
+                // This could also be done before handing the files.
+                foreach (string str in subDirs)
+                    dirs.Push(str);
+            }
+        }
+
+        static void ProcessFile( string this_file_to_process, string output_directory )
         {
             int buffer_size = BufferSize;
 
-            var file_information = new FileInfo(this_file_to_process);
-
-            if ( file_information.Length < buffer_size )
+            try
             {
-                buffer_size = (int) file_information.Length;
+                var file_information = new FileInfo(this_file_to_process);
+
+                if (file_information.Length < buffer_size)
+                {
+                    buffer_size = (int)file_information.Length;
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+                return;
             }
 
             byte[] buffer = new byte[buffer_size];
@@ -94,6 +193,7 @@ namespace ExifRename
 
                 if (exif_data.FromBytes(buffer) == true)
                 {
+
                     int final_field = exif_data.ShutterCount();
 
                     if (final_field == 0)
@@ -101,94 +201,41 @@ namespace ExifRename
                         final_field = exif_data.SequenceNumber();
                     }
 
-                    if (final_field == 0)
+                    try
                     {
-                        final_field = file_number;
-                    }
-
-                    var taken = exif_data.Taken();
-
-                    //string new_filename = string.Format("{0}_{1}{2}", taken.ToString("yyyyMMdd_HHmmss", System.Globalization.CultureInfo.InvariantCulture), final_field, filename_extension);
-                    //string just_filename = System.IO.Path.GetFileName(this_file_to_process);
-
-                    //if (string.Compare(new_filename, just_filename) != 0)
-                    //{
-                        //string rename_to = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(this_file_to_process), new_filename);
+                        var taken = exif_data.Taken();
 
                         // Create year path
-                        string directoryName = output_directory +"/"+ taken.ToString("yyyy", System.Globalization.CultureInfo.InvariantCulture);
+                        string directoryName = output_directory + "\\" + taken.ToString("yyyy", System.Globalization.CultureInfo.InvariantCulture);
                         Directory.CreateDirectory(directoryName);
                         // Create month path
-                        directoryName = directoryName+ "/" + taken.ToString("yyyy-MM-MMMM", System.Globalization.CultureInfo.InvariantCulture);
+                        directoryName = directoryName + "\\" + taken.ToString("yyyy-MM-MMMM", System.Globalization.CultureInfo.InvariantCulture);
                         // Create day-where path
-                        directoryName = directoryName + "/" + taken.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+                        directoryName = directoryName + "\\" + taken.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
                         Directory.CreateDirectory(directoryName);
 
                         long length = new System.IO.FileInfo(this_file_to_process).Length;
 
-                        string new_filename = string.Format("{0}-{1}{2}", 
-                            taken.ToString("yyyy-MM-dd-hh-mm-ss", System.Globalization.CultureInfo.InvariantCulture), length, 
+                        string new_filename = string.Format("{0}-{1}{2}",
+                            taken.ToString("yyyy-MM-dd-hh-mm-ss", System.Globalization.CultureInfo.InvariantCulture), length,
                             filename_extension);
-
-                        /*
-                        string new_filename = string.Format("{0}{1}", taken.ToString("yyyy-MM-dd-hh-mm-ss-fffffff", System.Globalization.CultureInfo.InvariantCulture), 
-                            filename_extension);
-                        */
 
                         string rename_to = System.IO.Path.Combine(directoryName, new_filename);
-                        // System.IO.File.Copy(this_file_to_process, rename_to);
 
                         CreateSymbolicLink(rename_to, this_file_to_process, SymbolicLink.File);
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e.Message);
+                        return;
+                    }
 
-                    //}
                 }
             }
-        }
-
-        static void ProcessFiles(string[] filenames, string output_directory)
-        {
-#if false
-            // Single threaded mode
-            int loop_index = 0;
-
-            while( loop_index < filenames.Length )
-            {
-                ProcessFile(filenames[loop_index], loop_index);
-                loop_index++;
-            }
-#else
-            // Multithreaded mode
-
-            Parallel.For(0, filenames.Length,
-                loop_index => { ProcessFile(filenames[loop_index], loop_index, output_directory); });
-
-#endif
         }
 
         static void Main(string[] args)
         {
-            var files_to_process = new List<string>();
-
-            /*
-            if (args.Length > 0)
-            {
-                foreach (string argument in args)
-                {
-                    if (Directory.Exists(argument) == true)
-                    {
-                        string directory_full_path = Path.GetFullPath(argument);
-
-                        files_to_process.AddRange(Directory.EnumerateFiles(directory_full_path, "*", SearchOption.AllDirectories));
-                    }
-                    else if (File.Exists(argument) == true)
-                    {
-                        files_to_process.Add(Path.GetFullPath(argument));
-                    }
-                }
-
-                ProcessFiles(files_to_process.ToArray());
-            }
-            */
 
             if (args.Length == 2)
             {
@@ -197,10 +244,8 @@ namespace ExifRename
                 {
                     string directory_full_path = Path.GetFullPath(args[0]);
 
-                    files_to_process.AddRange(Directory.EnumerateFiles(directory_full_path, "*", SearchOption.AllDirectories));
+                    TraverseTree(directory_full_path, args[1]);
                 }
-
-                ProcessFiles(files_to_process.ToArray(), args[1]);
 
             }
 
